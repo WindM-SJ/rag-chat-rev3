@@ -9,3 +9,7 @@ chroma_db/
 # docs 폴더 실제 문서 제외 (sample.txt만 추적)
 docs/*.pdf
 docs/*.hwp
+
+# PyInstaller 빌드 임시 파일
+build/
+dist/
