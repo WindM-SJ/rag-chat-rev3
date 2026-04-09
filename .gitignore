@@ -1,0 +1,7 @@
+.claude/
+.playwright-mcp/
+test-result-*.png
+__pycache__/
+*.pyc
+.env
+chroma_db/
