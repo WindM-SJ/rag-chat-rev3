@@ -15,4 +15,8 @@ CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
 # 검색 설정
-RETRIEVER_K = 3
+RETRIEVER_K = 2
+
+# LLM 생성 설정
+NUM_PREDICT = 512   # 최대 출력 토큰 수 (속도 개선)
+NUM_CTX = 1024      # 컨텍스트 윈도우 크기 (기본 2048 → 절반으로 축소)
