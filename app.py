@@ -72,32 +72,16 @@ if prompt := st.chat_input("문서에 대해 질문하세요..."):
         st.write(prompt)
 
     with st.chat_message("assistant"):
-        # 1) 생각 중 표시 + 문서 검색
-        status = st.empty()
-        status.markdown("💭 **생각 중...**")
-
-        docs = retriever.invoke(prompt)
+        # 1) 문서 검색
+        with st.spinner("📂 관련 문서 검색 중..."):
+            docs = retriever.invoke(prompt)
         context = "\n\n".join(doc.page_content for doc in docs)
 
-        # 예상 답변 시간 추정 (컨텍스트 길이 기반)
-        ctx_chars = len(context)
-        estimated_sec = max(5, min(60, ctx_chars // 60))
-        status.info(f"💭 생각 중... · ⏱️ 예상 답변 시간: 약 {estimated_sec}초")
-
-        # 2) 스트리밍 (첫 토큰 도착 시 상태 메시지 제거)
-        response_box = st.empty()
-        full_response = ""
-        first_chunk = True
+        # 2) st.write_stream으로 스트리밍 (Streamlit 네이티브 - 가장 효율적)
         start = time.time()
-
-        for chunk in chain.stream({"context": context, "question": prompt}):
-            if first_chunk:
-                status.empty()
-                first_chunk = False
-            full_response += chunk
-            response_box.markdown(full_response + "▌")
-
-        response_box.markdown(full_response)
+        full_response = st.write_stream(
+            chain.stream({"context": context, "question": prompt})
+        )
         elapsed = round(time.time() - start, 1)
         st.caption(f"⏱️ {elapsed}초 소요")
 
