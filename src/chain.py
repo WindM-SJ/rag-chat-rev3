@@ -47,7 +47,11 @@ class LocalGemmaLLM(LLM):
         self._load_model()
 
     def _load_model(self) -> None:
-        """모델 로딩 - GPU 사용 가능 시 4bit 양자화, 아니면 CPU."""
+        """모델 로딩 전략:
+        - CC >= 8.0 (RTX 30xx+): 4bit 양자화 (bitsandbytes)
+        - CC 6.x~7.x (GTX 10xx/20xx): float16 직접 GPU 로드
+        - CPU fallback
+        """
         model_source = (
             str(LLM_MODEL_PATH) if LLM_MODEL_PATH.exists() else LLM_MODEL_HUB
         )
@@ -55,21 +59,35 @@ class LocalGemmaLLM(LLM):
         self._tokenizer = AutoTokenizer.from_pretrained(model_source)
 
         if torch.cuda.is_available():
-            try:
-                from transformers import BitsAndBytesConfig
+            cc_major = torch.cuda.get_device_capability()[0]
 
-                bnb = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                )
+            if cc_major >= 8:
+                # Ampere 이상: 4bit 양자화
+                try:
+                    from transformers import BitsAndBytesConfig
+                    bnb = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_compute_dtype=torch.float16,
+                    )
+                    self._model = AutoModelForCausalLM.from_pretrained(
+                        model_source,
+                        quantization_config=bnb,
+                        device_map="auto",
+                    )
+                    return
+                except Exception:
+                    pass
+
+            # Pascal/Turing (CC 6.x~7.x): float16 GPU 직접 로드
+            try:
                 self._model = AutoModelForCausalLM.from_pretrained(
                     model_source,
-                    quantization_config=bnb,
+                    torch_dtype=torch.float16,
                     device_map="auto",
                 )
                 return
             except Exception:
-                pass  # fallback to CPU
+                pass
 
         # CPU fallback
         self._model = AutoModelForCausalLM.from_pretrained(
