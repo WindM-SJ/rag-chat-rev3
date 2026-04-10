@@ -1,6 +1,6 @@
 """
-RAG Chat Rev3 Launcher
-더블클릭 시 Ollama + Streamlit 자동 시작 후 브라우저 오픈
+RAG Chat Rev3 Launcher (Gemma 2 / HuggingFace)
+더블클릭 시 Streamlit 자동 시작 후 브라우저 오픈
 """
 import subprocess
 import sys
@@ -23,17 +23,6 @@ PORT = 8501
 
 
 # ── 유틸리티 ────────────────────────────────────────────────
-def find_ollama() -> str | None:
-    path = shutil.which("ollama")
-    if path:
-        return path
-    default = (
-        Path(os.environ.get("LOCALAPPDATA", ""))
-        / "Programs" / "Ollama" / "ollama.exe"
-    )
-    return str(default) if default.exists() else None
-
-
 def find_streamlit() -> str | None:
     # 1) 같은 폴더 venv
     venv_st = APP_DIR / ".venv" / "Scripts" / "streamlit.exe"
@@ -47,8 +36,8 @@ def find_streamlit() -> str | None:
 class Launcher(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("RAG Chat Rev3")
-        self.geometry("420x220")
+        self.title("RAG Chat Rev3 - Gemma 2")
+        self.geometry("440x220")
         self.resizable(False, False)
         self.configure(bg="#1E2630")
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -60,27 +49,24 @@ class Launcher(tk.Tk):
 
     # ── UI ──────────────────────────────────────────────────
     def _build_ui(self):
-        # 헤더
         tk.Label(
-            self, text="🤖  RAG Chat Rev3",
+            self, text="🤖  RAG Chat Rev3 (Gemma 2)",
             bg="#1E2630", fg="white",
-            font=("Segoe UI", 17, "bold"),
+            font=("Segoe UI", 15, "bold"),
         ).pack(pady=(22, 4))
 
-        # 상태 레이블
         self._status = tk.StringVar(value="시작 중...")
-        tk.Label(
+        self._status_label = tk.Label(
             self, textvariable=self._status,
             bg="#1E2630", fg="#95A5A6",
             font=("Segoe UI", 10),
-        ).pack()
+        )
+        self._status_label.pack()
 
-        # 진행 바
-        self._bar = ttk.Progressbar(self, length=340, mode="indeterminate")
+        self._bar = ttk.Progressbar(self, length=360, mode="indeterminate")
         self._bar.pack(pady=12)
         self._bar.start(12)
 
-        # 버튼 행
         btn_row = tk.Frame(self, bg="#1E2630")
         btn_row.pack(pady=4)
 
@@ -103,13 +89,7 @@ class Launcher(tk.Tk):
 
     def _set_status(self, text: str, color: str = "#95A5A6"):
         self.after(0, lambda: self._status.set(text))
-        self.after(0, lambda: self.nametowidget(
-            self._status._tk).configure()  # tk 내부 색 변경은 별도 레이블로 처리
-        )
-        # 색상 변경은 직접 위젯 참조로
-        for widget in self.winfo_children():
-            if isinstance(widget, tk.Label) and widget.cget("textvariable") == str(self._status):
-                self.after(0, lambda w=widget, c=color: w.configure(fg=c))
+        self.after(0, lambda: self._status_label.configure(fg=color))
 
     def _ready(self):
         self._bar.stop()
@@ -125,38 +105,13 @@ class Launcher(tk.Tk):
     # ── 실행 로직 ────────────────────────────────────────────
     def _start(self):
         try:
-            self._start_ollama()
             self._start_streamlit()
             self.after(0, self._ready)
         except Exception as exc:
             self.after(0, lambda: self._error(str(exc)))
 
-    def _start_ollama(self):
-        self._status.set("Ollama 서비스 확인 중...")
-        ollama = find_ollama()
-        if not ollama:
-            return  # Ollama 없으면 건너뜀
-
-        try:
-            result = subprocess.run(
-                [ollama, "ps"],
-                capture_output=True, timeout=4,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            if result.returncode == 0:
-                return  # 이미 실행 중
-        except Exception:
-            pass
-
-        self._status.set("Ollama 시작 중...")
-        subprocess.Popen(
-            [ollama, "serve"],
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        time.sleep(3)
-
     def _start_streamlit(self):
-        self._status.set("챗봇 서버 시작 중...")
+        self._set_status("챗봇 서버 시작 중...")
         st = find_streamlit()
         if not st:
             raise RuntimeError(
@@ -178,8 +133,10 @@ class Launcher(tk.Tk):
             stderr=subprocess.PIPE,
         )
 
-        # Streamlit 준비 대기 (최대 30초)
-        for _ in range(30):
+        self._set_status("모델 로딩 중... (최초 실행 시 수분 소요)", "#F39C12")
+
+        # Streamlit 준비 대기 (최대 300초 - 모델 로딩 고려)
+        for _ in range(300):
             time.sleep(1)
             if self._proc.poll() is not None:
                 stderr = self._proc.stderr.read().decode(errors="ignore")

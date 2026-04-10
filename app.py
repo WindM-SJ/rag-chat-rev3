@@ -8,7 +8,7 @@ from src.chain import get_llm, create_stream_chain
 # ── 페이지 설정 ─────────────────────────────────────────────────
 st.set_page_config(page_title="로컬 RAG 챗봇", page_icon="🤖", layout="wide")
 st.title("🤖 나만의 로컬 RAG 챗봇")
-st.caption("docs/ 폴더의 문서를 기반으로 Ollama LLM이 답변합니다.")
+st.caption("docs/ 폴더의 문서를 기반으로 Qwen2.5 (HuggingFace) LLM이 답변합니다.")
 
 # ── 사이드바 ────────────────────────────────────────────────────
 with st.sidebar:
@@ -26,12 +26,12 @@ with st.sidebar:
     - `.txt` (UTF-8)
 
     **사용 모델**
-    - LLM: `llama3.2` (Ollama)
+    - LLM: `Qwen2.5-1.5B-Instruct` (HuggingFace)
     - 임베딩: `ko-sroberta-multitask`
     """)
 
 # ── 컴포넌트 초기화 (캐싱) ──────────────────────────────────────
-@st.cache_resource(show_spinner="문서를 벡터 DB에 로딩 중...")
+@st.cache_resource(show_spinner="모델 및 문서를 로딩 중... (최초 실행 시 수분 소요)")
 def init_components():
     splits = load_and_split()
     if not splits:
@@ -81,7 +81,7 @@ if prompt := st.chat_input("문서에 대해 질문하세요..."):
 
         # 예상 답변 시간 추정 (컨텍스트 길이 기반)
         ctx_chars = len(context)
-        estimated_sec = max(5, min(40, ctx_chars // 80))
+        estimated_sec = max(5, min(60, ctx_chars // 60))
         status.info(f"💭 생각 중... · ⏱️ 예상 답변 시간: 약 {estimated_sec}초")
 
         # 2) 스트리밍 (첫 토큰 도착 시 상태 메시지 제거)

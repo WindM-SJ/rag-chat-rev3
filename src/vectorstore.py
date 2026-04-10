@@ -1,11 +1,19 @@
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import SentenceTransformerEmbeddings
-from src.config import EMBEDDING_MODEL, RETRIEVER_K
+from langchain_huggingface import HuggingFaceEmbeddings
+from src.config import EMBEDDING_MODEL_PATH, EMBEDDING_MODEL_HUB, RETRIEVER_K
 
 
 def get_embeddings():
-    """한국어 SentenceTransformer 임베딩 모델 반환."""
-    return SentenceTransformerEmbeddings(model_name=EMBEDDING_MODEL)
+    """한국어 임베딩 모델 반환 (로컬 경로 우선, HF Hub 폴백)."""
+    model_name = (
+        str(EMBEDDING_MODEL_PATH)
+        if EMBEDDING_MODEL_PATH.exists()
+        else EMBEDDING_MODEL_HUB
+    )
+    return HuggingFaceEmbeddings(
+        model_name=model_name,
+        model_kwargs={"device": "cpu"},
+    )
 
 
 def create_vectorstore(splits: list) -> Chroma:
