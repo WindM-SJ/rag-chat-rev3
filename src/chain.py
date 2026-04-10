@@ -51,12 +51,17 @@ class LocalGemmaLLM(LLM):
         - CC >= 8.0 (RTX 30xx+): 4bit 양자화 (bitsandbytes)
         - CC 6.x~7.x (GTX 10xx/20xx): float16 직접 GPU 로드
         - CPU fallback
+        HF_TOKEN 환경변수가 있으면 gated 모델 다운로드에 사용.
         """
+        import os
+        hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        token_kwargs = {"token": hf_token} if hf_token else {}
+
         model_source = (
             str(LLM_MODEL_PATH) if LLM_MODEL_PATH.exists() else LLM_MODEL_HUB
         )
 
-        self._tokenizer = AutoTokenizer.from_pretrained(model_source)
+        self._tokenizer = AutoTokenizer.from_pretrained(model_source, **token_kwargs)
 
         if torch.cuda.is_available():
             cc_major = torch.cuda.get_device_capability()[0]
@@ -73,6 +78,7 @@ class LocalGemmaLLM(LLM):
                         model_source,
                         quantization_config=bnb,
                         device_map="auto",
+                        **token_kwargs,
                     )
                     return
                 except Exception:
@@ -84,6 +90,7 @@ class LocalGemmaLLM(LLM):
                     model_source,
                     torch_dtype=torch.float16,
                     device_map="auto",
+                    **token_kwargs,
                 )
                 return
             except Exception:
@@ -93,19 +100,33 @@ class LocalGemmaLLM(LLM):
         self._model = AutoModelForCausalLM.from_pretrained(
             model_source,
             torch_dtype=torch.float32,
+            **token_kwargs,
         )
 
     def _apply_chat_template(self, user_content: str) -> str:
-        """모델의 공식 chat template 적용 (extra Q&A 생성 방지)."""
-        messages = [
-            {"role": "system", "content": _SYSTEM_MSG},
-            {"role": "user", "content": user_content},
-        ]
-        return self._tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        """모델의 공식 chat template 적용 (extra Q&A 생성 방지).
+        system role 미지원 모델(Gemma 2 등)은 user 메시지에 시스템 지시를 병합.
+        """
+        try:
+            messages = [
+                {"role": "system", "content": _SYSTEM_MSG},
+                {"role": "user", "content": user_content},
+            ]
+            return self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except Exception:
+            # Gemma 2 등 system role 미지원 모델: system 지시를 user에 병합
+            messages = [
+                {"role": "user", "content": f"{_SYSTEM_MSG}\n\n{user_content}"},
+            ]
+            return self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
 
     @property
     def _llm_type(self) -> str:

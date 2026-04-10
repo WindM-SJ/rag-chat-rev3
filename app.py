@@ -1,3 +1,12 @@
+import os
+os.environ["TQDM_DISABLE"] = "1"
+
+# HF 토큰: 캐시 파일에서 자동 로드 (huggingface-cli login 또는 직접 저장)
+_hf_token_file = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "token")
+if os.path.exists(_hf_token_file):
+    with open(_hf_token_file) as _f:
+        os.environ.setdefault("HF_TOKEN", _f.read().strip())
+
 import time
 import streamlit as st
 
