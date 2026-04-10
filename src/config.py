@@ -7,11 +7,9 @@ DOCS_DIR = Path("./docs")
 MODEL_DIR = Path("./models")
 
 # LLM 모델 - 로컬 경로 우선, 없으면 HF Hub 다운로드
-# Qwen2.5-1.5B-Instruct: Apache 2.0, 인증 불필요, 한국어 지원
-# Gemma 2 사용 시: LLM_MODEL_PATH = MODEL_DIR / "gemma-2-2b-it"
-#                  LLM_MODEL_HUB  = "google/gemma-2-2b-it"  (HF 토큰 필요)
-LLM_MODEL_PATH = MODEL_DIR / "qwen2.5-1.5b-instruct"
-LLM_MODEL_HUB = "Qwen/Qwen2.5-1.5B-Instruct"
+# gemma-2-2b-it: Google Gemma 2 2B, HF 토큰 필요 (gated model)
+LLM_MODEL_PATH = MODEL_DIR / "gemma-2-2b-it"
+LLM_MODEL_HUB = "google/gemma-2-2b-it"
 
 # 임베딩 모델 (한국어 특화) - 로컬 경로 우선, 없으면 HF Hub 다운로드
 EMBEDDING_MODEL_PATH = MODEL_DIR / "ko-sroberta-multitask"

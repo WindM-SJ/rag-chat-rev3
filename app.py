@@ -8,7 +8,7 @@ from src.chain import get_llm, create_stream_chain
 # ── 페이지 설정 ─────────────────────────────────────────────────
 st.set_page_config(page_title="로컬 RAG 챗봇", page_icon="🤖", layout="wide")
 st.title("🤖 나만의 로컬 RAG 챗봇")
-st.caption("docs/ 폴더의 문서를 기반으로 Qwen2.5 (HuggingFace) LLM이 답변합니다.")
+st.caption("docs/ 폴더의 문서를 기반으로 Gemma 2 (HuggingFace) LLM이 답변합니다.")
 
 # ── 사이드바 ────────────────────────────────────────────────────
 with st.sidebar:
@@ -26,7 +26,7 @@ with st.sidebar:
     - `.txt` (UTF-8)
 
     **사용 모델**
-    - LLM: `Qwen2.5-1.5B-Instruct` (HuggingFace)
+    - LLM: `gemma-2-2b-it` (HuggingFace)
     - 임베딩: `ko-sroberta-multitask`
     """)
 
