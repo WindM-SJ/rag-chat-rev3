@@ -19,9 +19,9 @@ EMBEDDING_MODEL_HUB = "jhgan/ko-sroberta-multitask"
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
-# 검색 설정
-RETRIEVER_K = 2
+# 검색 설정 — 더 많은 청크를 가져와 컨텍스트를 풍부하게 함
+RETRIEVER_K = 4
 
 # LLM 생성 설정
-MAX_NEW_TOKENS = 512
-TEMPERATURE = 0.7
+MAX_NEW_TOKENS = 1024   # 긴 구조적 답변을 허용
+TEMPERATURE = 0.5       # 0.7 → 0.5: 일관성 향상, 지나친 보수성 방지

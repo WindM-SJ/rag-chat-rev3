@@ -25,14 +25,26 @@ _PROMPT = PromptTemplate.from_template(
 {context}
 
 [질문]
-{question}"""
+{question}
+
+[답변 지침]
+반드시 아래 구조로 답변하세요.
+1. 핵심 결론 (2~3문장)
+2. 근거 및 상세 설명 (문서 내용을 바탕으로 구체적으로)
+3. 절차·주의사항 또는 추가 정보 (해당하는 경우)"""
 )
 
 _SYSTEM_MSG = (
-    "당신은 문서 기반 질의응답 전문가입니다.\n"
-    "반드시 한글(Hangul)로만 답변하고, 한자(漢字)나 한문은 절대 사용하지 마세요.\n"
-    "제공된 문서 내용만 참고하여 핵심을 간결하게 답변하세요.\n"
-    "문서에 없는 내용은 '문서에서 찾을 수 없습니다'라고 답변하세요."
+    "당신은 RAG 기반 문서 질의응답 도우미입니다.\n"
+    "반드시 한글로만 답변하고, 꼭 필요한 전문 용어 외에 한자나 외국어는 사용하지 마세요.\n"
+    "반드시 제공된 참고 문서(context)를 우선적으로 참고하여 답변하세요.\n\n"
+    "답변 규칙:\n"
+    "- 답변을 지나치게 짧게 끝내지 말 것\n"
+    "- 먼저 핵심 결론을 말한 뒤, 그 이유와 근거를 자세히 설명할 것\n"
+    "- 가능하면 절차 순서, 예시, 주의사항을 함께 설명할 것\n"
+    "- 답변은 최소 4문장 이상으로 작성할 것\n"
+    "- context에 없는 내용은 추측하지 말고, 확인 가능한 범위만 설명할 것\n"
+    "- context가 부족하면 부족하다고 명시하고, 관련된 내용을 최대한 정리할 것"
 )
 
 
@@ -41,17 +53,27 @@ class LocalGemmaLLM(LLM):
 
     _model: Any = PrivateAttr(default=None)
     _tokenizer: Any = PrivateAttr(default=None)
+    _device_label: str = PrivateAttr(default="cpu")
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._load_model()
 
+    @property
+    def device_label(self) -> str:
+        """사이드바 등 UI에서 표시할 실행 장치 문자열."""
+        return self._device_label
+
     def _load_model(self) -> None:
-        """모델 로딩 전략:
-        - CC >= 8.0 (RTX 30xx+): 4bit 양자화 (bitsandbytes)
-        - CC 6.x~7.x (GTX 10xx/20xx): float16 직접 GPU 로드
-        - CPU fallback
-        HF_TOKEN 환경변수가 있으면 gated 모델 다운로드에 사용.
+        """모델 로딩 전략 (device_map 분할 절대 금지):
+        - CC >= 8.0 (RTX 30xx+) : 4-bit 양자화 (bitsandbytes)
+        - CC 6.x~7.x (GTX 10xx/20xx): float16 전체 GPU
+          → VRAM 부족 시 CPU 전체로 폴백 (split 없음)
+        - CPU fallback : float32
+
+        device_map="auto" 는 VRAM 부족 시 레이어를 CPU로 분할한다.
+        GPU↔CPU PCIe 전송이 병목이 되어 GPU 단독/CPU 단독보다 느려지므로
+        {"": "cuda:0"} 로 강제하고 OOM 발생 시 CPU로 완전 폴백한다.
         """
         import os
         hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
@@ -65,9 +87,10 @@ class LocalGemmaLLM(LLM):
 
         if torch.cuda.is_available():
             cc_major = torch.cuda.get_device_capability()[0]
+            gpu_name = torch.cuda.get_device_name(0)
 
             if cc_major >= 8:
-                # Ampere 이상: 4bit 양자화
+                # Ampere 이상: 4-bit 양자화
                 try:
                     from transformers import BitsAndBytesConfig
                     bnb = BitsAndBytesConfig(
@@ -77,24 +100,31 @@ class LocalGemmaLLM(LLM):
                     self._model = AutoModelForCausalLM.from_pretrained(
                         model_source,
                         quantization_config=bnb,
-                        device_map="auto",
+                        device_map={"": "cuda:0"},
                         **token_kwargs,
                     )
+                    self._device_label = f"GPU ({gpu_name}) · 4-bit"
+                    print(f"[LLM] {self._device_label}")
                     return
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[LLM] 4-bit load failed: {e}")
 
-            # Pascal/Turing (CC 6.x~7.x): float16 GPU 직접 로드
+            # Pascal/Turing (CC 6.x~7.x): float16 전체 GPU 강제
+            # VRAM 여유 확보 후 로드, OOM 시 CPU 폴백
+            torch.cuda.empty_cache()
             try:
                 self._model = AutoModelForCausalLM.from_pretrained(
                     model_source,
                     torch_dtype=torch.float16,
-                    device_map="auto",
+                    device_map={"": "cuda:0"},   # split 없이 전체 GPU
                     **token_kwargs,
                 )
+                self._device_label = f"GPU ({gpu_name}) · float16"
+                print(f"[LLM] {self._device_label}")
                 return
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[LLM] GPU float16 load failed ({e}), falling back to CPU")
+                torch.cuda.empty_cache()
 
         # CPU fallback
         self._model = AutoModelForCausalLM.from_pretrained(
@@ -102,6 +132,8 @@ class LocalGemmaLLM(LLM):
             torch_dtype=torch.float32,
             **token_kwargs,
         )
+        self._device_label = "CPU · float32"
+        print(f"[LLM] {self._device_label}")
 
     def _apply_chat_template(self, user_content: str) -> str:
         """모델의 공식 chat template 적용 (extra Q&A 생성 방지).
@@ -167,6 +199,7 @@ class LocalGemmaLLM(LLM):
             self._tokenizer,
             skip_special_tokens=True,
             skip_prompt=True,
+            timeout=60.0,  # 생성 스레드 hang 방지
         )
 
         gen_kwargs = dict(
@@ -183,8 +216,21 @@ class LocalGemmaLLM(LLM):
         )
         thread.start()
 
-        for text in streamer:
-            yield GenerationChunk(text=text)
+        # 토큰을 버퍼에 모아 단어·문장 경계에서 한 번에 yield.
+        # 토큰 하나씩 yield하면 Streamlit이 매번 WebSocket 업데이트를 보내
+        # 실제 생성 속도보다 렌더링이 훨씬 느리게 느껴진다.
+        # 버퍼 크기나 플러시 문자 조건 중 하나가 충족되면 즉시 방출한다.
+        _FLUSH_CHARS = frozenset(" \n\t.!?,。、，。：；!?()[]「」『』")
+        _FLUSH_SIZE = 12  # 최소 누적 글자 수
+
+        buffer = ""
+        for token in streamer:
+            buffer += token
+            if len(buffer) >= _FLUSH_SIZE or (buffer and buffer[-1] in _FLUSH_CHARS):
+                yield GenerationChunk(text=buffer)
+                buffer = ""
+        if buffer:
+            yield GenerationChunk(text=buffer)
 
         thread.join()
 
