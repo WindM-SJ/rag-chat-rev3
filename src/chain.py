@@ -74,16 +74,35 @@ class LocalGemmaLLM(LLM):
         device_map="auto" 는 VRAM 부족 시 레이어를 CPU로 분할한다.
         GPU↔CPU PCIe 전송이 병목이 되어 GPU 단독/CPU 단독보다 느려지므로
         {"": "cuda:0"} 로 강제하고 OOM 발생 시 CPU로 완전 폴백한다.
+
+        [네트워크 버그 우회]
+        transformers 최신 버전의 _patch_mistral_regex()가 AutoTokenizer 초기화 시
+        불필요하게 HuggingFace Hub의 model_info()를 호출한다.
+        로컬 모델 사용 시 local_files_only=True 를 명시해 이 네트워크 요청을 차단한다.
         """
         import os
         hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
         token_kwargs = {"token": hf_token} if hf_token else {}
 
-        model_source = (
-            str(LLM_MODEL_PATH) if LLM_MODEL_PATH.exists() else LLM_MODEL_HUB
-        )
+        is_local = LLM_MODEL_PATH.exists()
+        model_source = str(LLM_MODEL_PATH) if is_local else LLM_MODEL_HUB
 
-        self._tokenizer = AutoTokenizer.from_pretrained(model_source, **token_kwargs)
+        # 로컬 모델이면 network 요청을 완전 차단 (transformers 버그 우회)
+        if is_local:
+            token_kwargs["local_files_only"] = True
+
+        try:
+            self._tokenizer = AutoTokenizer.from_pretrained(model_source, **token_kwargs)
+        except Exception as e:
+            if not is_local:
+                raise RuntimeError(
+                    "HuggingFace Hub 연결 실패.\n\n"
+                    "로컬에 Gemma 2 모델 파일이 없습니다.\n"
+                    "아래 명령으로 모델을 먼저 다운로드하세요 (약 4GB):\n\n"
+                    "    python download_models.py\n\n"
+                    f"원인: {e}"
+                ) from e
+            raise
 
         if torch.cuda.is_available():
             cc_major = torch.cuda.get_device_capability()[0]

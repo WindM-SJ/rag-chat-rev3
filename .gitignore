@@ -6,9 +6,21 @@ __pycache__/
 .env
 chroma_db/
 
-# docs 폴더 실제 문서 제외 (sample.txt만 추적)
+# docs 폴더: 실제 문서 파일 제외, 폴더 구조만 추적
 docs/*.pdf
 docs/*.hwp
+docs/*.txt
+
+# pretreated_docs 폴더: 변환된 MD 파일 제외, 폴더 구조만 추적
+pretreated_docs/*.md
+pretreated_docs/*.log
+
+# Streamlit 런타임 로그
+streamlit.log
+streamlit_err.log
+
+# 테스트 스크린샷
+test_md_*.png
 
 # PyInstaller 빌드 임시 파일
 build/

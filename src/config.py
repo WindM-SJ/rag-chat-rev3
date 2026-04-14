@@ -3,6 +3,9 @@ from pathlib import Path
 # 문서 경로
 DOCS_DIR = Path("./docs")
 
+# 전처리된 Markdown 문서 경로 (markitdown 변환 결과)
+PRETREATED_DOCS_DIR = Path("./pretreated_docs")
+
 # 모델 디렉토리
 MODEL_DIR = Path("./models")
 

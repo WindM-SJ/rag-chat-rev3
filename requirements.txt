@@ -11,3 +11,4 @@ torch
 accelerate
 bitsandbytes
 huggingface_hub
+markitdown[pdf]>=0.1.0
